@@ -53,6 +53,7 @@ public class TerrainRenderer : MonoBehaviour
         mesh.RecalculateNormals();
         mesh.SetColors(colors);
         meshFilter.mesh = mesh;
+        meshRenderer.sharedMaterial.SetFloat("zMult", terrainHeight);
     }
     //Metoda konwertuje mapę wysokości na wierzchołki wraz z kolorami i trójkąty do wyrenderowania
     void getMeshData(out Vector3[] vertices,out Color[] colors, out int[] triangles)
@@ -68,7 +69,7 @@ public class TerrainRenderer : MonoBehaviour
                 //Wysokość wierzchołka na współrzędnych x,y odpowiada wartości na współrzędnych x,y piksela w skali szarości 
                 //pomnożonego przez zmienną terrainHeight
                 float vertexHeight = heightMap.GetPixel(x, y).grayscale;
-                vertices[x + y * heightMap.width] = new Vector3(x-heightMap.width/2, vertexHeight * terrainHeight, y-heightMap.height/2);
+                vertices[x + y * heightMap.width] = new Vector3(x-heightMap.width/2, vertexHeight, y-heightMap.height/2);
                 
                 //Kolor wierzchołka przechodzi od cyjanu przez zieleń i żółć do czerwieni
                 colors[x + y * heightMap.width] = new Color(Mathf.Clamp(2f* vertexHeight, 0f,1f), Mathf.Clamp(2f *(1f - vertexHeight),0f,1f), Mathf.Pow(1f- vertexHeight,3f));
@@ -92,15 +93,7 @@ public class TerrainRenderer : MonoBehaviour
     //Metoda aktualizuje wysokości wierzchołków w Meshu
     void updateMeshData()
     {
-        Vector3[] vertices = mesh.vertices;
-        for (int y = 0; y < heightMap.height; y++)
-        {
-            for (int x = 0; x < heightMap.width; x++)
-            {
-                vertices[x + y * heightMap.width] = new Vector3(x - heightMap.width / 2, heightMap.GetPixel(x, y).grayscale * terrainHeight, y - heightMap.height / 2);
-            }
-        }
-        meshFilter.mesh.SetVertices(vertices);
+        meshRenderer.sharedMaterial.SetFloat("zMult",terrainHeight);
         meshFilter.mesh.RecalculateNormals();
 
     }
