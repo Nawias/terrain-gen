@@ -8,15 +8,13 @@ using UnityEngine;
 
 public class TerrainRenderer : MonoBehaviour
 {
-    //Obiekt służący za szablon dla obiektów renderujących linie
-    [SerializeField]
-    private LineRenderer lineRenderer;
     //Wczytana tekstura mapy wysokości
     [SerializeField]
     private Texture2D heightMap;
+    [SerializeField]
+    private Shader shader;
     //Wartość mnożnika wysokości terenu
     [SerializeField]
-    [Range(1, 10f)]
     private float terrainHeight;
     //Property definiujące dostęp do zmiennej terrainHeight
     public float TerrainHeight
@@ -28,92 +26,113 @@ public class TerrainRenderer : MonoBehaviour
         set
         {
             terrainHeight = value;
-            SetVertices();
+            updateMeshData();
         }
     }
-    //Bufory na obiekty renderujące linie
-    private LineRenderer[] vertLineRenderers;
-    private LineRenderer[] horLineRenderers;
+
+    private MeshRenderer meshRenderer;
+    private MeshFilter meshFilter;
+    private Mesh mesh;
 
     void Start()
     {
-        if(heightMap == null)
+        
+        if (heightMap == null)
         {
             return;
         }
 
-        // Pionowych linii jest tyle ile poziomo pikseli, a poziomych linii tyle ile pionowo pikseli.
-        vertLineRenderers = new LineRenderer[heightMap.width];
-        horLineRenderers = new LineRenderer[heightMap.height];
-        
-        // Tworzenie obiektów renderujących linie pionowe
-        for (int i = 0; i < heightMap.width; i++)
-        {
-            // Z szablonu tworzony jest nowy LineRenderer. Każdy ma tyle punktów, ile pionowo jest pikseli.
-            LineRenderer lr = Instantiate<LineRenderer>(lineRenderer, transform);
-            lr.positionCount = heightMap.height;
-            // W pętli ustawiana jest pozycja każdego wierzchołka linii - szerokość i długość to współrzędne pikseli,
-            // a wysokość to wartość koloru w skali szarości pomnożona przez mnożnik wysokości terenu.
-            for (int j = 0; j < heightMap.height; j++)
-            {
-                lr.SetPosition(j, new Vector3(i, heightMap.GetPixel(i, j).grayscale*terrainHeight, j));   
-            }
-            // Obiekt renderujący zachowywany jest w buforze dla ułatwienia dostępu do późniejszej modyfikacji wierzchołków
-            vertLineRenderers[i] = lr;
-        }
-
-        //Tworzenie obiektów renderujących linie poziome - analogicznie do linii pionowych, z zamianą osi X oraz Z.
-        for (int i = 0; i < heightMap.height; i++)
-        {
-            LineRenderer lr = Instantiate<LineRenderer>(lineRenderer, transform);
-            lr.positionCount = heightMap.width;
-            for (int j = 0; j < heightMap.width; j++)
-            {
-                lr.SetPosition(j, new Vector3(j, heightMap.GetPixel(j, i).grayscale*terrainHeight, i));
-            }
-            horLineRenderers[i] = lr;
-        }
-
-        // Wyłączenie rysowania na scenie obiektu będącego szablonem.
-        lineRenderer.gameObject.SetActive(false);
+        meshRenderer = gameObject.AddComponent<MeshRenderer>();
+        meshRenderer.sharedMaterial = new Material(shader);
+        meshFilter = gameObject.AddComponent<MeshFilter>();
+        mesh = new Mesh();
+        mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+        getMeshData(out Vector3[] vertices, out Color[] colors,out int[] triangles);
+        mesh.SetVertices(vertices);
+        mesh.SetTriangles(triangles,0);
+        mesh.RecalculateNormals();
+        mesh.SetColors(colors);
+        meshFilter.mesh = mesh;
     }
-
-    // Metoda służąca do aktualizacji wysokości wierzchołków po pierwszym renderze
-    private void SetVertices()
+    //Metoda konwertuje mapę wysokości na wierzchołki wraz z kolorami i trójkąty do wyrenderowania
+    void getMeshData(out Vector3[] vertices,out Color[] colors, out int[] triangles)
     {
-        // W pętli ustawiana jest pozycja każdego wierzchołka poszczególnych linii - szerokość i długość to współrzędne pikseli,
-        // a wysokość to wartość koloru w skali szarości pomnożona przez mnożnik wysokości terenu.
-        
-        // Dla linii pionowych
-        for (int i = 0; i < heightMap.width; i++)
-        {
-            for (int j = 0; j < heightMap.height; j++)
-            {
-                vertLineRenderers[i].SetPosition(j, new Vector3(i, heightMap.GetPixel(i, j).grayscale * terrainHeight, j));
-            }
-        }
+        vertices = new Vector3[heightMap.height * heightMap.width];
+        colors = new Color[heightMap.height * heightMap.width];
+        List<int> trianglesList = new List<int>();
 
-        // Dla linii dla linii poziomych
-        for (int i = 0; i < heightMap.height; i++)
+        for(int y = 0; y < heightMap.height; y++)
         {
-            for (int j = 0; j < heightMap.width; j++)
+            for(int x = 0; x < heightMap.width; x++)
             {
-                horLineRenderers[i].SetPosition(j, new Vector3(j, heightMap.GetPixel(j, i).grayscale * terrainHeight, i));
+                //Wysokość wierzchołka na współrzędnych x,y odpowiada wartości na współrzędnych x,y piksela w skali szarości 
+                //pomnożonego przez zmienną terrainHeight
+                float vertexHeight = heightMap.GetPixel(x, y).grayscale;
+                vertices[x + y * heightMap.width] = new Vector3(x-heightMap.width/2, vertexHeight * terrainHeight, y-heightMap.height/2);
+                
+                //Kolor wierzchołka przechodzi od cyjanu przez zieleń i żółć do czerwieni
+                colors[x + y * heightMap.width] = new Color(Mathf.Clamp(2f* vertexHeight, 0f,1f), Mathf.Clamp(2f *(1f - vertexHeight),0f,1f), Mathf.Pow(1f- vertexHeight,3f));
+                
+                //Dla każdego wierzchołka x>0 y>0 generowane są 2 ściany z sąsiadami z zakresu [x-1,x],[y-1,y]
+                if (x > 0 && y > 0)
+                {
+                    trianglesList.Add(x + (y - 1) * heightMap.width);
+                    trianglesList.Add(x - 1 + (y - 1) * heightMap.width);
+                    trianglesList.Add(x - 1 + y * heightMap.width);
+
+                    trianglesList.Add(x - 1 + y * heightMap.width);
+                    trianglesList.Add(x + y * heightMap.width);
+                    trianglesList.Add(x + (y - 1) * heightMap.width);
+                }
             }
         }
+        triangles = trianglesList.ToArray();
+
+    }
+    //Metoda aktualizuje wysokości wierzchołków w Meshu
+    void updateMeshData()
+    {
+        Vector3[] vertices = mesh.vertices;
+        for (int y = 0; y < heightMap.height; y++)
+        {
+            for (int x = 0; x < heightMap.width; x++)
+            {
+                vertices[x + y * heightMap.width] = new Vector3(x - heightMap.width / 2, heightMap.GetPixel(x, y).grayscale * terrainHeight, y - heightMap.height / 2);
+            }
+        }
+        meshFilter.mesh.SetVertices(vertices);
+        meshFilter.mesh.RecalculateNormals();
+
     }
 
     private void Update()
     {
         // Klawisz  [  zmniejsza mnożnik wysokości terenu, a klawisz  ]  zwiększa go.
+        // Klawisze strzałek obracają i skalują scenę
         // Użycie property TerrainHeight aktualizuje wszystkie wierzchołki po zmianie wartości.
         if (Input.GetKey(KeyCode.LeftBracket))
         {
             TerrainHeight -= 1f * Time.deltaTime;
         }
-        if (Input.GetKey(KeyCode.RightBracket))
+        else if (Input.GetKey(KeyCode.RightBracket))
         {
             TerrainHeight += 1f * Time.deltaTime;
+        }
+        if (Input.GetKey(KeyCode.UpArrow))
+        {
+            gameObject.transform.localScale = new Vector3(gameObject.transform.localScale.x + Time.deltaTime, gameObject.transform.localScale.y + Time.deltaTime, gameObject.transform.localScale.z + Time.deltaTime);
+        }
+        else if (Input.GetKey(KeyCode.DownArrow))
+        {
+            gameObject.transform.localScale = new Vector3(gameObject.transform.localScale.x - Time.deltaTime, gameObject.transform.localScale.y - Time.deltaTime, gameObject.transform.localScale.z - Time.deltaTime);
+        }
+        if (Input.GetKey(KeyCode.RightArrow))
+        {
+            gameObject.transform.Rotate(Vector3.up, Time.deltaTime * 10);
+        }
+        else if (Input.GetKey(KeyCode.LeftArrow))
+        {
+            gameObject.transform.Rotate(Vector3.up, -Time.deltaTime * 10);
         }
     }
 }

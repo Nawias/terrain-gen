@@ -429,3 +429,6 @@ FodyWeavers.xsd
 *.tlog
 
 # End of https://www.toptal.com/developers/gitignore/api/unity,visualstudio
+/Assets/gta5.png
+/Assets/gta.png
+/Assets/poland.png
